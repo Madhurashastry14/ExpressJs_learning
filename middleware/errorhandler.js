@@ -1,4 +1,4 @@
-const errorhandler = (req, res, next) => {
+const errorhandler = (err, req, res, next) => {
   res.status(500).json({
     error: "Internal server error",
   });

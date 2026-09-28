@@ -20,6 +20,12 @@ export const getStudents = async (req, res, next) => {
 export const getStudentsById = async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (Number(id) !== req.user.userId) {
+      return res.status(403).json({
+        error: "You are not allowed to access this student",
+      });
+    }
+
     const student = await findStudentById(id);
     if (!student) {
       return res.status(404).json({

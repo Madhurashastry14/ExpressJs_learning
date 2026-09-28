@@ -57,7 +57,7 @@ export const findUser = async (req, res, next) => {
       });
     }
     const token = jwt.sign(
-      { userId: user.id, userName: user.name },
+      { userId: user.id, userName: user.name, role: user.role },
       JWT_SECRET,
       { expiresIn: "1h" },
     );
@@ -70,6 +70,24 @@ export const findUser = async (req, res, next) => {
         name: user.name,
         email: user.email,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//GET /profile
+export const getProfile = async (req, res, next) => {
+  try {
+    if (req.user.userId !== req.params.userId) {
+      json.status(403).json({
+        error: "Forbidden",
+      });
+    }
+    const userId = req.user.userId;
+    res.status(200).json({
+      message: "Authentication successful",
+      userId,
     });
   } catch (error) {
     next(error);
