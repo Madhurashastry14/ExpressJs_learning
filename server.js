@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 
 dotenv.config();
 import studentrouter from "./routes/studentroute.js";
@@ -9,7 +10,7 @@ import errorHandler from "./middleware/errorhandler.js";
 const app = express();
 app.use(cors());
 app.use(express.json());
-
+app.use(cookieParser());
 app.use("/students", studentrouter);
 app.use("/auth", authRoute);
 app.use((req, res) => {

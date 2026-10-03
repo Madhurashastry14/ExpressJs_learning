@@ -1,4 +1,11 @@
 import { createUser, getUserByEmail } from "../services/authservice.js";
+import {
+  generateRefreshToken,
+  hashRefreshToken,
+  saveRefreshToken,
+  findRefreshToken,
+  revokeRefreshToken,
+} from "../services/refreshtoken.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
@@ -45,26 +52,36 @@ export const findUser = async (req, res, next) => {
       });
     }
     const user = await getUserByEmail(email.trim().toLowerCase());
+
     if (!user) {
-      res.status(401).json({
+      return res.status(401).json({
         error: "Invalid email or password",
       });
     }
     const checkpassword = await bcrypt.compare(password, user.password_hash);
     if (!checkpassword) {
-      res.status(401).json({
+      return res.status(401).json({
         error: "Invalid email or password",
       });
     }
-    const token = jwt.sign(
-      { userId: user.id, userName: user.name, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "1h" },
+    const accessToken = jwt.sign(
+      { userId: user.id, userName: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" },
     );
-
+    const refreshToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(refreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); //7 days
+    const saved = await saveRefreshToken(user.id, tokenHash, expiresAt);
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
     res.status(200).json({
       message: "Login successful",
-      token,
+      accessToken,
       user: {
         id: user.id,
         name: user.name,
@@ -79,8 +96,8 @@ export const findUser = async (req, res, next) => {
 //GET /profile
 export const getProfile = async (req, res, next) => {
   try {
-    if (req.user.userId !== req.params.userId) {
-      json.status(403).json({
+    if (req.params.userId !== req.params.userId) {
+      return res.status(403).json({
         error: "Forbidden",
       });
     }
@@ -88,6 +105,51 @@ export const getProfile = async (req, res, next) => {
     res.status(200).json({
       message: "Authentication successful",
       userId,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const refreshAccessToken = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({
+        error: "Refresh token required",
+      });
+    }
+    const hashToken = hashRefreshToken(refreshToken);
+    const storedToken = await findRefreshToken(hashToken);
+    if (!storedToken) {
+      return res.status(401).json({
+        error: "Invalid token required",
+      });
+    }
+    //if revoked_at is not null then it means that its been revoked
+    if (storedToken.revoked_at) {
+      return res.status(401).json({
+        error: "Refresh token revoked",
+      });
+    }
+
+    //if expiry date is current date then its expired
+    if (new Date(storedToken.expires_at) <= new Date()) {
+      return res.status(401).json({
+        error: "Refresh token expired",
+      });
+    }
+    const accessToken = jwt.sign(
+      {
+        userId: storedToken.user_id,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "15m",
+      },
+    );
+    res.status(200).json({
+      accessToken,
     });
   } catch (error) {
     next(error);
