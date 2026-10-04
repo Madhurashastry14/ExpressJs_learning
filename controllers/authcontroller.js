@@ -111,6 +111,23 @@ export const getProfile = async (req, res, next) => {
   }
 };
 
+export const logout = async (req, res, next) => {
+  try {
+    const refreshtoken = req.cookies.refreshToken;
+    if (refreshtoken) {
+      const tokenhash = hashRefreshToken(refreshtoken);
+      await revokeRefreshToken(tokenhash);
+    }
+    res.clearCookie("refreshToken");
+    res.status(200).json({
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.log("LOGOUT ERROR:", error);
+    next(error);
+  }
+};
+
 export const refreshAccessToken = async (req, res, next) => {
   try {
     const refreshToken = req.cookies.refreshToken;
