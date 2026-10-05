@@ -3,8 +3,7 @@ import {
   generateRefreshToken,
   hashRefreshToken,
   saveRefreshToken,
-  findRefreshToken,
-  revokeRefreshToken,
+  rotateRefreshToken,
 } from "../services/refreshtoken.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -130,32 +129,22 @@ export const logout = async (req, res, next) => {
 
 export const refreshAccessToken = async (req, res, next) => {
   try {
-    const refreshToken = req.cookies.refreshToken;
-    if (!refreshToken) {
+    const oldrefreshToken = req.cookies.refreshToken;
+    if (!oldrefreshToken) {
       return res.status(401).json({
         error: "Refresh token required",
       });
     }
-    const hashToken = hashRefreshToken(refreshToken);
-    const storedToken = await findRefreshToken(hashToken);
-    if (!storedToken) {
-      return res.status(401).json({
-        error: "Invalid token required",
-      });
-    }
-    //if revoked_at is not null then it means that its been revoked
-    if (storedToken.revoked_at) {
-      return res.status(401).json({
-        error: "Refresh token revoked",
-      });
-    }
+    const oldHashToken = hashRefreshToken(oldrefreshToken);
+    const newRefreshToken = generateRefreshToken();
+    const newHashToken = hashRefreshToken(newRefreshToken);
 
-    //if expiry date is current date then its expired
-    if (new Date(storedToken.expires_at) <= new Date()) {
-      return res.status(401).json({
-        error: "Refresh token expired",
-      });
-    }
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const storedToken = await rotateRefreshToken(
+      oldHashToken,
+      newHashToken,
+      newExpiresAt,
+    );
     const accessToken = jwt.sign(
       {
         userId: storedToken.user_id,
@@ -165,6 +154,14 @@ export const refreshAccessToken = async (req, res, next) => {
         expiresIn: "15m",
       },
     );
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.status(200).json({
       accessToken,
     });
